@@ -24,6 +24,39 @@ type ExampleReply struct {
 
 // Add your RPC definitions here.
 
+type Empty struct {
+}
+type LinkArgs struct {
+	ID int64
+}
+
+type PingArgs struct {
+	ID int64
+}
+
+type TaskEnum int64
+
+const (
+	Sleep TaskEnum = iota
+	MapTask
+	ReduceTask
+	Complete
+)
+
+type GetTaskArgs struct {
+	ID int64
+}
+
+type GetTaskReply struct {
+	Type    TaskEnum
+	TaskID  int64
+	NReduce int64
+	NMap    int64
+	Inames  []string
+}
+type FinishMapArgs struct {
+	TaskID int64
+}
 
 // Cook up a unique-ish UNIX-domain socket name
 // in /var/tmp, for the coordinator.
