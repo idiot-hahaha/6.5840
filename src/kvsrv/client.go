@@ -44,7 +44,7 @@ func MakeClerk(server *labrpc.ClientEnd) *Clerk {
 // the types of args and reply (including whether they are pointers)
 // must match the declared types of the RPC handler function's
 // arguments. and reply must be passed as a pointer.
-func (ck *Clerk) Get(key string) string {
+func (ck *Clerk) Get(key string) (value string) {
 
 	// You will have to modify this function.
 	DPrintf("Get %s", key)
@@ -52,28 +52,13 @@ func (ck *Clerk) Get(key string) string {
 		Key:      key,
 		ClientID: ck.clientID,
 		UniqueID: ck.opIndex.Add(1),
-		Ack:      make([]uint64, 0),
 	}
-	ck.ackMu.Lock()
-	for ack, _ := range ck.AckPool {
-		args.Ack = append(args.Ack, ack)
-	}
-	ck.ackMu.Unlock()
-	defer func() {
-		ck.ackMu.Lock()
-		ck.AckPool[args.UniqueID] = struct{}{}
-		ck.ackMu.Unlock()
-	}()
 	reply := GetReply{}
 	if ck.CallWithRetry("KVServer.Get", &args, &reply) {
-		ck.ackMu.Lock()
-		for _, ack := range args.Ack {
-			delete(ck.AckPool, ack)
-		}
-		ck.ackMu.Unlock()
-		return reply.Value
+		value = reply.Value
 	}
-	return ""
+	ck.ReleaseCache(args.UniqueID)
+	return
 }
 
 // shared by Put and Append.
@@ -91,45 +76,23 @@ func (ck *Clerk) PutAppend(key string, value string, op string) string {
 		Value:    value,
 		ClientID: ck.clientID,
 		UniqueID: ck.opIndex.Add(1),
-		Ack:      make([]uint64, 0),
 	}
-
-	ck.ackMu.Lock()
-	for ack, _ := range ck.AckPool {
-		args.Ack = append(args.Ack, ack)
-	}
-	ck.ackMu.Unlock()
-
-	defer func() {
-		ck.ackMu.Lock()
-		ck.AckPool[args.UniqueID] = struct{}{}
-		ck.ackMu.Unlock()
-	}()
 
 	reply := PutAppendReply{}
 	switch op {
 	case "Put":
 		if ck.CallWithRetry("KVServer.Put", &args, &reply) {
-			ck.ackMu.Lock()
-			for _, ack := range args.Ack {
-				delete(ck.AckPool, ack)
-			}
-			ck.ackMu.Unlock()
 			return reply.Value
 		}
 		DPrintf("Call KVServer.Put failed!")
+		ck.ReleaseCache(args.UniqueID)
 		return ""
 	case "Append":
 		if ck.CallWithRetry("KVServer.Append", &args, &reply) {
-
-			ck.ackMu.Lock()
-			for _, ack := range args.Ack {
-				delete(ck.AckPool, ack)
-			}
-			ck.ackMu.Unlock()
 			return reply.Value
 		}
 		DPrintf("Call KVServer.Append failed!")
+		ck.ReleaseCache(args.UniqueID)
 		return ""
 	default:
 		panic("Undefined operation!")
@@ -157,4 +120,29 @@ func (ck *Clerk) CallWithRetry(path string, args interface{}, reply interface{})
 		DPrintf("Call %s failed!, retry", path)
 	}
 	return true
+}
+
+func (ck *Clerk) ReleaseCache(uniqueID uint64) {
+	args := ReleaseCacheArgs{
+		Ack:      make([]uint64, 0),
+		ClientID: ck.clientID,
+	}
+	ck.ackMu.Lock()
+	for ack, _ := range ck.AckPool {
+		args.Ack = append(args.Ack, ack)
+	}
+	ck.ackMu.Unlock()
+	args.Ack = append(args.Ack, uniqueID)
+	reply := ReleaseCacheReply{}
+	if !ck.CallWithRetry("KVServer.ReleaseCache", &args, &reply) {
+		ck.ackMu.Lock()
+		ck.AckPool[uniqueID] = struct{}{}
+		ck.ackMu.Unlock()
+		return
+	}
+	ck.ackMu.Lock()
+	for _, ack := range args.Ack {
+		delete(ck.AckPool, ack)
+	}
+	ck.ackMu.Unlock()
 }

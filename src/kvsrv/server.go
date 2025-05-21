@@ -27,7 +27,6 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	// Your code here.
 	kv.cacheMux.Lock()
 	defer kv.cacheMux.Unlock()
-	kv.removeFromCache(args.ClientID, args.Ack)
 	if res, ok := kv.checkResCache(args.ClientID, args.UniqueID); ok {
 		reply.Value = res
 		return
@@ -47,7 +46,6 @@ func (kv *KVServer) Put(args *PutAppendArgs, reply *PutAppendReply) {
 	// Your code here.
 	kv.cacheMux.Lock()
 	defer kv.cacheMux.Unlock()
-	kv.removeFromCache(args.ClientID, args.Ack)
 	if res, ok := kv.checkResCache(args.ClientID, args.UniqueID); ok {
 		reply.Value = res
 		return
@@ -62,7 +60,6 @@ func (kv *KVServer) Append(args *PutAppendArgs, reply *PutAppendReply) {
 	// Your code here.
 	kv.cacheMux.Lock()
 	defer kv.cacheMux.Unlock()
-	kv.removeFromCache(args.ClientID, args.Ack)
 	if res, ok := kv.checkResCache(args.ClientID, args.UniqueID); ok {
 		reply.Value = res
 		return
@@ -117,4 +114,8 @@ func (kv *KVServer) removeFromCache(clientID int64, ackUniqueIds []uint64) {
 	for _, ackUniqueId := range ackUniqueIds {
 		delete(m, ackUniqueId)
 	}
+}
+
+func (kv *KVServer) ReleaseCache(args *ReleaseCacheArgs, reply *ReleaseCacheReply) {
+	kv.removeFromCache(args.ClientID, args.Ack)
 }
